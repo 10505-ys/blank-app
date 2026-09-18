@@ -15,7 +15,25 @@ if "tasks" not in st.session_state:
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = datetime.date.today()
 
-# 3. 사이드바: 고정 일정(학교/학원/식사) 및 시험 기간 설정
+# 요일별 기본 고정 일정 데이터 초기화 (월:0 ~ 일:6)
+days_map = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+if "weekly_schedule" not in st.session_state:
+    st.session_state.weekly_schedule = {}
+    for i, day in enumerate(days_map):
+        if i < 5: # 평일
+            st.session_state.weekly_schedule[i] = {
+                "school": (8, 16),
+                "academy": (18, 21),
+                "dinner": (17, 18)
+            }
+        else: # 주말
+            st.session_state.weekly_schedule[i] = {
+                "school": (0, 0), # 주말 학교 없음
+                "academy": (13, 17) if i == 5 else (0, 0), # 토요일 학원 예시
+                "dinner": (18, 19)
+            }
+
+# 3. 사이드바: 시험 기간 및 요일별 고정 일정 설정
 st.sidebar.header("⚙️ 1. 시험 기간 설정")
 today = datetime.date.today()
 default_start = today + datetime.timedelta(days=7)
@@ -25,10 +43,23 @@ start_date = st.sidebar.date_input("시험 시작일", default_start)
 end_date = st.sidebar.date_input("시험 종료일", default_end)
 
 st.sidebar.divider()
-st.sidebar.header("🏫 2. 하루 고정 일정 (공부 불가 시간)")
-school_time = st.sidebar.slider("학교 시간 (시작 ~ 종료)", 0, 24, (8, 16))
-academy_time = st.sidebar.slider("학원 시간 (시작 ~ 종료)", 0, 24, (18, 21))
-dinner_time = st.sidebar.slider("저녁 및 휴식 (시작 ~ 종료)", 0, 24, (17, 18))
+st.sidebar.header("🏫 2. 요일별 고정 일정 (공부 불가 시간)")
+
+# 요일별 탭 생성
+day_tabs = st.sidebar.tabs(["월", "화", "수", "목", "금", "토", "일"])
+for i, tab in enumerate(day_tabs):
+    with tab:
+        st.caption(f"📌 {days_map[i]} 일정 설정")
+        sch = st.slider(f"학교 시간", 0, 24, st.session_state.weekly_schedule[i]["school"], key=f"sch_{i}")
+        aca = st.slider(f"학원 시간", 0, 24, st.session_state.weekly_schedule[i]["academy"], key=f"aca_{i}")
+        din = st.slider(f"식사/휴식", 0, 24, st.session_state.weekly_schedule[i]["dinner"], key=f"din_{i}")
+        
+        # 설정값 저장
+        st.session_state.weekly_schedule[i] = {
+            "school": sch,
+            "academy": aca,
+            "dinner": din
+        }
 
 # 4. 메인 타이틀
 st.title("📅 스마트 달력 & 맞춤 시간표 플래너")
@@ -94,11 +125,11 @@ for idx, task in enumerate(st.session_state.tasks):
 st.divider()
 
 # ---------------------------------------------------------
-# 기능 3: 전체 달력 그리드 & 자유로운 날짜 선택기
+# 기능 3: 달력 클릭형 그리드 (날짜 클릭 시 해당 시간표로 즉시 이동)
 # ---------------------------------------------------------
-st.subheader("🗓️ 달력 일정표 (날짜 클릭/선택 가능)")
+st.subheader("🗓️ 달력 일정표 (날짜를 클릭하면 해당 일시 시간표로 이동합니다)")
 
-# 날짜 이동 버튼 (이전 날 / 오늘 / 다음 날)
+# 날짜 이동 상단 버튼
 btn_col1, btn_col2, btn_col3, date_col = st.columns([1, 1, 1, 3])
 with btn_col1:
     if st.button("◀ 이전 날"):
@@ -119,7 +150,7 @@ with date_col:
         key="date_picker_widget"
     )
 
-# 7일 단위 달력 시각화
+# 클릭 가능한 달력 버튼 그리드
 total_days = (end_date - today).days + 1
 days_list = [today + datetime.timedelta(days=i) for i in range(max(1, total_days))]
 
@@ -132,47 +163,46 @@ for i in range(0, len(days_list), cols_per_row):
         with cols[idx]:
             is_selected = (day == st.session_state.selected_date)
             
+            # 날짜 레이블 생성
             if day == today:
-                box_style = "background-color: #E3F2FD; border: 3px solid #2196F3;"
-                day_title = "오늘 🎯"
+                label_str = f"🎯 {day.strftime('%m/%d')}\n오늘"
             elif start_date <= day <= end_date:
-                box_style = "background-color: #FFEBEE; border: 2px solid #FF5252;"
-                day_title = "시험 D-Day 📝"
+                label_str = f"📝 {day.strftime('%m/%d')}\n시험 D-Day"
             else:
-                box_style = "background-color: #F5F5F5; border: 1px solid #DDD;"
-                day_title = f"D-{(start_date - day).days}"
+                label_str = f"{day.strftime('%m/%d(%a)')}\nD-{(start_date - day).days}"
                 
-            if is_selected:
-                box_style += " font-weight: bold; box-shadow: 0 0 10px rgba(0,0,0,0.3);"
-
-            st.markdown(
-                f"""
-                <div style="{box_style} padding: 8px; border-radius: 8px; text-align: center; margin-bottom: 5px;">
-                    <div style="font-size: 11px; color: #555;">{day.strftime('%m/%d(%a)')}</div>
-                    <div style="font-size: 13px; margin-top: 3px;">{day_title}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            # 선택 여부에 따른 버튼 타입 지정
+            btn_type = "primary" if is_selected else "secondary"
+            
+            if st.button(label_str, key=f"cal_btn_{day.strftime('%Y%m%d')}", use_container_width=True, type=btn_type):
+                st.session_state.selected_date = day
+                st.rerun()
 
 st.divider()
 
 # ---------------------------------------------------------
-# 기능 4: 학교/학원/식사시간 제외 실제 자습 타임테이블
+# 기능 4: 선택한 요일 맞춤 일일 타임테이블
 # ---------------------------------------------------------
 target_date = st.session_state.selected_date
-st.subheader(f"⏰ {target_date.strftime('%Y년 %m월 %d일 (%a)')} 일일 정밀 시간표")
+day_weekday = target_date.weekday() # 0(월) ~ 6(일)
+selected_day_schedule = st.session_state.weekly_schedule[day_weekday]
 
-# 1시간 단위 타임슬롯 생성 (00:00~23:00)
+st.subheader(f"⏰ {target_date.strftime('%Y년 %m월 %d일')} ({days_map[day_weekday]}) 일일 정밀 시간표")
+
+# 해당 요일의 고정 일정 불러오기
+sch_range = selected_day_schedule["school"]
+aca_range = selected_day_schedule["academy"]
+din_range = selected_day_schedule["dinner"]
+
 available_hours = []
 blocked_reasons = {}
 
 for hour in range(24):
-    if school_time[0] <= hour < school_time[1]:
+    if sch_range[0] != sch_range[1] and sch_range[0] <= hour < sch_range[1]:
         blocked_reasons[hour] = "🏫 학교 수업"
-    elif academy_time[0] <= hour < academy_time[1]:
+    elif aca_range[0] != aca_range[1] and aca_range[0] <= hour < aca_range[1]:
         blocked_reasons[hour] = "✏️ 학원 수업"
-    elif dinner_time[0] <= hour < dinner_time[1]:
+    elif din_range[0] != din_range[1] and din_range[0] <= hour < din_range[1]:
         blocked_reasons[hour] = "🍽️ 저녁 식사 및 휴식"
     elif hour < 6: # 새벽 수면 시간 (00:00 ~ 06:00)
         blocked_reasons[hour] = "🌙 취침 시간"
@@ -181,11 +211,10 @@ for hour in range(24):
 
 uncompleted_tasks = [t for t in st.session_state.tasks if not t["done"]]
 
-st.info(f"💡 총 24시간 중 고정 일정(학교/학원/수면/식사)을 제외하고 **실제 자습 가능한 시간은 총 {len(available_hours)}시간**입니다.")
+st.info(f"💡 **{days_map[day_weekday]}** 고정 일정을 제외하고 **실제 자습 가능한 시간은 총 {len(available_hours)}시간**입니다.")
 
-# 시간표 구성 및 표시
+# 시간표 구성 및 출력
 if uncompleted_tasks and available_hours:
-    # 과목별로 공부할 시간 분배
     subj_index = 0
     num_subj = len(uncompleted_tasks)
     hours_per_subj = max(1, len(available_hours) // num_subj)
@@ -201,7 +230,6 @@ if uncompleted_tasks and available_hours:
             subj_index += 1
             current_hour_count = 0
 
-    # 07:00부터 24:00까지 시간표 출력
     for hour in range(7, 24):
         time_str = f"{hour:02d}:00 ~ {hour+1:02d}:00"
         
@@ -221,4 +249,4 @@ elif not uncompleted_tasks:
     st.balloons()
     st.success("🎉 모든 시험 공부를 끝마치셨습니다!")
 else:
-    st.warning("⚠️ 하루에 공부 가능한 남은 시간 슬롯이 없습니다. 사이드바에서 학원/학교 시간을 조정해 보세요.")
+    st.warning("⚠️ 해당 요일에 공부 가능한 남은 시간 슬롯이 없습니다. 사이드바에서 고정 일정을 조정해 보세요.")
