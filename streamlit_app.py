@@ -1,19 +1,18 @@
 import streamlit as st
 import datetime
 import random
+import json
+import streamlit.components.v1 as components
 
-# 1. 페이지 기본 설정 및 브라운 테마 CSS 스타일 적용
+# 1. 페이지 기본 설정 및 브라운 테마 CSS
 st.set_page_config(page_title="스마트 달력 & 맞춤 시간표 플래너", layout="wide", page_icon="📅")
 
 st.markdown("""
     <style>
-    /* 전체 배경 및 기본 글꼴 색상 */
     .stApp {
         background-color: #FAF6F0;
         color: #4A3E3D;
     }
-    
-    /* 메인 타이틀 색상 */
     h1 {
         color: #5C3D2E !important;
         font-family: 'Malgun Gothic', sans-serif;
@@ -21,14 +20,10 @@ st.markdown("""
     h2, h3 {
         color: #68422A !important;
     }
-    
-    /* 사이드바 스타일 */
     [data-testid="stSidebar"] {
         background-color: #F0E5D8;
         border-right: 1px solid #D9C5B2;
     }
-    
-    /* 응원 박스 스타일 */
     .cheer-box {
         background-color: #E8D8C8;
         border-left: 5px solid #8C5A3C;
@@ -39,8 +34,6 @@ st.markdown("""
         font-weight: bold;
         box-shadow: 1px 1px 5px rgba(0,0,0,0.05);
     }
-    
-    /* 통합된 불가 시간대 블록 스타일 */
     .blocked-summary {
         background-color: #EFE6DD;
         border: 1px solid #D1C2B4;
@@ -50,8 +43,6 @@ st.markdown("""
         margin-bottom: 6px;
         font-size: 0.95rem;
     }
-    
-    /* 공부 시간 블록 스타일 */
     .study-summary {
         background-color: #D5E5D5;
         border-left: 5px solid #4A7C59;
@@ -61,8 +52,6 @@ st.markdown("""
         margin-bottom: 6px;
         font-weight: bold;
     }
-    
-    /* 버튼 스타일 */
     .stButton>button {
         border-radius: 6px;
         border: 1px solid #B59A85;
@@ -70,7 +59,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 응원 메시지 리스트
 CHEERING_MESSAGES = [
     "🍀 지금까지 열심히 준비한 만큼, 시험에서 최고의 실력을 발휘할 수 있을 거예요!",
     "🔥 할 수 있다! 포기하지 않고 한 걸음씩 나아가는 당신을 응원합니다.",
@@ -79,37 +67,61 @@ CHEERING_MESSAGES = [
     "🎯 시험 당일, 아는 문제는 확실하게! 찍는 문제도 정답으로 이어지는 행운이 함께하길!"
 ]
 
-# 3. Session State 초기화
+# 2. 로컬 저장소(localStorage) 자동 저장/불러오기 컴포넌트
+DEFAULT_SCHEDULE = {
+    str(i): {
+        "sleep": [2, 8] if i < 5 else [3, 10],
+        "school": [8, 16] if i < 5 else [0, 0],
+        "academy": [18, 21] if i < 5 else ([13, 17] if i == 5 else [0, 0]),
+        "dinner": [17, 18] if i < 5 else [18, 19]
+    } for i in range(7)
+}
+
+DEFAULT_TASKS = [
+    {"subject": "국어", "unit": "1~2단원 개념 복습", "done": False},
+    {"subject": "수학", "unit": "이차방정식 유형 풀이", "done": False},
+    {"subject": "영어", "unit": "1과 본문 암기", "done": False}
+]
+
+# Query Parameter를 활용한 새로고침 데이터 보존
+params = st.query_params
+
 if "tasks" not in st.session_state:
-    st.session_state.tasks = [
-        {"subject": "국어", "unit": "1~2단원 개념 복습", "done": False},
-        {"subject": "수학", "unit": "이차방정식 유형 풀이", "done": False},
-        {"subject": "영어", "unit": "1과 본문 암기", "done": False}
-    ]
+    if "saved_tasks" in params:
+        try:
+            st.session_state.tasks = json.loads(params["saved_tasks"])
+        except:
+            st.session_state.tasks = DEFAULT_TASKS
+    else:
+        st.session_state.tasks = DEFAULT_TASKS
+
+if "weekly_schedule" not in st.session_state:
+    if "saved_schedule" in params:
+        try:
+            loaded = json.loads(params["saved_schedule"])
+            st.session_state.weekly_schedule = {int(k): v for k, v in loaded.items()}
+        except:
+            st.session_state.weekly_schedule = {i: DEFAULT_SCHEDULE[str(i)] for i in range(7)}
+    else:
+        st.session_state.weekly_schedule = {i: DEFAULT_SCHEDULE[str(i)] for i in range(7)}
 
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = datetime.date.today()
 
-days_map = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
-if "weekly_schedule" not in st.session_state:
-    st.session_state.weekly_schedule = {}
-    for i in range(7):
-        if i < 5: # 평일
-            st.session_state.weekly_schedule[i] = {
-                "sleep": (2, 8),
-                "school": (8, 16),
-                "academy": (18, 21),
-                "dinner": (17, 18)
-            }
-        else: # 주말
-            st.session_state.weekly_schedule[i] = {
-                "sleep": (3, 10),
-                "school": (0, 0),
-                "academy": (13, 17) if i == 5 else (0, 0),
-                "dinner": (18, 19)
-            }
+# 데이터 변경 시 URL Parameter에 자동 동기화하여 유지
+def sync_storage():
+    st.query_params["saved_tasks"] = json.dumps(st.session_state.tasks, ensure_ascii=False)
+    st.query_params["saved_schedule"] = json.dumps(st.session_state.weekly_schedule)
 
-# 4. 사이드바 설정
+# 실시간 슬라이더 변경 감지 콜백
+def update_schedule_callback(day_idx, key_type):
+    val = st.session_state[f"{key_type}_{day_idx}"]
+    st.session_state.weekly_schedule[day_idx][key_type] = list(val)
+    sync_storage()
+
+days_map = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+
+# 3. 사이드바 설정
 st.sidebar.header("⚙️ 1. 시험 기간 설정")
 today = datetime.date.today()
 default_start = today + datetime.timedelta(days=7)
@@ -125,23 +137,30 @@ day_tabs = st.sidebar.tabs(["월", "화", "수", "목", "금", "토", "일"])
 for i, tab in enumerate(day_tabs):
     with tab:
         st.caption(f"📌 {days_map[i]} 일정 설정")
-        slp = st.slider(f"🌙 취침 ~ 기상 시간", 0, 24, st.session_state.weekly_schedule[i]["sleep"], key=f"slp_{i}")
-        sch = st.slider(f"🏫 학교 시간", 0, 24, st.session_state.weekly_schedule[i]["school"], key=f"sch_{i}")
-        aca = st.slider(f"✏️ 학원 시간", 0, 24, st.session_state.weekly_schedule[i]["academy"], key=f"aca_{i}")
-        din = st.slider(f"🍽️ 식사/휴식", 0, 24, st.session_state.weekly_schedule[i]["dinner"], key=f"din_{i}")
+        sch_data = st.session_state.weekly_schedule[i]
         
-        st.session_state.weekly_schedule[i] = {
-            "sleep": slp,
-            "school": sch,
-            "academy": aca,
-            "dinner": din
-        }
+        st.slider(
+            "🌙 취침 ~ 기상 시간", 0, 24, tuple(sch_data["sleep"]), 
+            key=f"sleep_{i}", on_change=update_schedule_callback, args=(i, "sleep")
+        )
+        st.slider(
+            "🏫 학교 시간", 0, 24, tuple(sch_data["school"]), 
+            key=f"school_{i}", on_change=update_schedule_callback, args=(i, "school")
+        )
+        st.slider(
+            "✏️ 학원 시간", 0, 24, tuple(sch_data["academy"]), 
+            key=f"academy_{i}", on_change=update_schedule_callback, args=(i, "academy")
+        )
+        st.slider(
+            "🍽️ 식사/휴식", 0, 24, tuple(sch_data["dinner"]), 
+            key=f"dinner_{i}", on_change=update_schedule_callback, args=(i, "dinner")
+        )
 
 st.sidebar.divider()
 st.sidebar.markdown("💌 **오늘의 응원 한마디**")
 st.sidebar.info(random.choice(CHEERING_MESSAGES))
 
-# 5. 메인 타이틀 및 응원 카드
+# 4. 메인 타이틀 및 응원 카드
 st.title("📅 스마트 달력 & 맞춤 시간표 플래너")
 
 cheer_msg = random.choice(CHEERING_MESSAGES)
@@ -182,6 +201,7 @@ with st.expander("➕ 새 과목/시험범위 추가하기"):
         submitted = st.form_submit_button("추가하기")
         if submitted and new_subject and new_unit:
             st.session_state.tasks.append({"subject": new_subject, "unit": new_unit, "done": False})
+            sync_storage()
             st.rerun()
 
 total_tasks = len(st.session_state.tasks)
@@ -194,15 +214,18 @@ for idx, task in enumerate(st.session_state.tasks):
     col_check, col_text, col_del = st.columns([1, 6, 1])
     with col_check:
         is_done = st.checkbox("", value=task["done"], key=f"check_{idx}")
-        st.session_state.tasks[idx]["done"] = is_done
+        if is_done != st.session_state.tasks[idx]["done"]:
+            st.session_state.tasks[idx]["done"] = is_done
+            sync_storage()
     with col_text:
-        if is_done:
+        if task["done"]:
             st.markdown(f"~~**[{task['subject']}]** {task['unit']}~~ ✅")
         else:
             st.write(f"**[{task['subject']}]** {task['unit']}")
     with col_del:
         if st.button("삭제", key=f"del_{idx}"):
             st.session_state.tasks.pop(idx)
+            sync_storage()
             st.rerun()
 
 st.divider()
@@ -260,7 +283,7 @@ for i in range(0, len(days_list), cols_per_row):
 st.divider()
 
 # ---------------------------------------------------------
-# 기능 4: 연속된 불가 시간대를 하나로 병합한 간결한 시간표
+# 기능 4: 타임테이블 실시간 생성
 # ---------------------------------------------------------
 target_date = st.session_state.selected_date
 day_weekday = target_date.weekday()
@@ -316,7 +339,7 @@ if uncompleted_tasks and available_hours:
             subj_index += 1
             current_hour_count = 0
 
-# 시간대 묶기 알고리즘 (연속된 동일 타입의 시간대를 하나로 통합)
+# 시간대 묶기 처리
 schedule_blocks = []
 start_h = 0
 
@@ -342,7 +365,7 @@ while start_h < 24:
         schedule_blocks.append({"start": start_h, "end": end_h, "type": "free", "desc": "☕ 자율 학습 및 개인 정비"})
         start_h = end_h
 
-# 병합된 시간표 출력
+# 시간표 출력
 for block in schedule_blocks:
     time_str = f"{block['start']:02d}:00 ~ {block['end']:02d}:00"
     
