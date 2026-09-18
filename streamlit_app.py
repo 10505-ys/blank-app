@@ -114,10 +114,20 @@ CHEERING_MESSAGES = [
     "🎯 시험 당일, 아는 문제는 확실하게! 찍는 문제도 정답으로 이어지는 행운이 함께하길!"
 ]
 
-# 시간 보조 함수 (문자열 HH:MM <-> datetime.time 객체)
-def parse_time(t_str):
-    h, m = map(int, t_str.split(":"))
-    return datetime.time(h, m)
+# 안전한 시간 파싱 함수 (숫자 및 문자열 모두 호환)
+def parse_time(val):
+    if isinstance(val, (int, float)):
+        h = int(val) % 24
+        return datetime.time(h, 0)
+    elif isinstance(val, str):
+        try:
+            h, m = map(int, val.split(":"))
+            return datetime.time(h % 24, m % 60)
+        except:
+            return datetime.time(0, 0)
+    elif isinstance(val, datetime.time):
+        return val
+    return datetime.time(0, 0)
 
 def format_time(t_obj):
     return t_obj.strftime("%H:%M")
@@ -206,44 +216,20 @@ for i, tab in enumerate(day_tabs):
         st.caption(f"📌 {days_map[i]} 일정 설정")
         sch_data = st.session_state.weekly_schedule[i]
         
-        # 30분 단위 시간 선택
         time_step = datetime.timedelta(minutes=30)
         
-        st.slider(
-            "🌙 취침 ~ 기상",
-            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
-            value=(parse_time(sch_data["sleep"][0]), parse_time(sch_data["sleep"][1])),
-            step=time_step, format="HH:mm", key=f"sleep_{i}",
-            on_change=update_schedule_callback, args=(i, "sleep")
-        )
-        st.slider(
-            "🏫 학교 시간",
-            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
-            value=(parse_time(sch_data["school"][0]), parse_time(sch_data["school"][1])),
-            step=time_step, format="HH:mm", key=f"school_{i}",
-            on_change=update_schedule_callback, args=(i, "school")
-        )
-        st.slider(
-            "✏️ 학원 시간",
-            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
-            value=(parse_time(sch_data.get("academy", ["00:00", "00:00"])[0]), parse_time(sch_data.get("academy", ["00:00", "00:00"])[1])),
-            step=time_step, format="HH:mm", key=f"academy_{i}",
-            on_change=update_schedule_callback, args=(i, "academy")
-        )
-        st.slider(
-            "🍱 점심 식사/휴식",
-            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
-            value=(parse_time(sch_data.get("lunch", ["12:00", "13:00"])[0]), parse_time(sch_data.get("lunch", ["12:00", "13:00"])[1])),
-            step=time_step, format="HH:mm", key=f"lunch_{i}",
-            on_change=update_schedule_callback, args=(i, "lunch")
-        )
-        st.slider(
-            "🍽️ 저녁 식사/휴식",
-            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
-            value=(parse_time(sch_data.get("dinner", ["17:00", "18:00"])[0]), parse_time(sch_data.get("dinner", ["17:00", "18:00"])[1])),
-            step=time_step, format="HH:mm", key=f"dinner_{i}",
-            on_change=update_schedule_callback, args=(i, "dinner")
-        )
+        # 기본값 로딩 시 안전 파싱 적용
+        slp_val = (parse_time(sch_data.get("sleep", ["02:00", "08:00"])[0]), parse_time(sch_data.get("sleep", ["02:00", "08:00"])[1]))
+        sch_val = (parse_time(sch_data.get("school", ["08:00", "16:00"])[0]), parse_time(sch_data.get("school", ["08:00", "16:00"])[1]))
+        aca_val = (parse_time(sch_data.get("academy", ["00:00", "00:00"])[0]), parse_time(sch_data.get("academy", ["00:00", "00:00"])[1]))
+        lnc_val = (parse_time(sch_data.get("lunch", ["12:00", "13:00"])[0]), parse_time(sch_data.get("lunch", ["12:00", "13:00"])[1]))
+        din_val = (parse_time(sch_data.get("dinner", ["17:00", "18:00"])[0]), parse_time(sch_data.get("dinner", ["17:00", "18:00"])[1]))
+        
+        st.slider("🌙 취침 ~ 기상", min_value=datetime.time(0, 0), max_value=datetime.time(23, 30), value=slp_val, step=time_step, format="HH:mm", key=f"sleep_{i}", on_change=update_schedule_callback, args=(i, "sleep"))
+        st.slider("🏫 학교 시간", min_value=datetime.time(0, 0), max_value=datetime.time(23, 30), value=sch_val, step=time_step, format="HH:mm", key=f"school_{i}", on_change=update_schedule_callback, args=(i, "school"))
+        st.slider("✏️ 학원 시간", min_value=datetime.time(0, 0), max_value=datetime.time(23, 30), value=aca_val, step=time_step, format="HH:mm", key=f"academy_{i}", on_change=update_schedule_callback, args=(i, "academy"))
+        st.slider("🍱 점심 식사/휴식", min_value=datetime.time(0, 0), max_value=datetime.time(23, 30), value=lnc_val, step=time_step, format="HH:mm", key=f"lunch_{i}", on_change=update_schedule_callback, args=(i, "lunch"))
+        st.slider("🍽️ 저녁 식사/휴식", min_value=datetime.time(0, 0), max_value=datetime.time(23, 30), value=din_val, step=time_step, format="HH:mm", key=f"dinner_{i}", on_change=update_schedule_callback, args=(i, "dinner"))
 
 # 메인 헤더
 st.markdown("""
@@ -428,9 +414,16 @@ selected_day_schedule = st.session_state.weekly_schedule[day_weekday]
 
 st.subheader(f"⏰ {target_date.strftime('%Y년 %m월 %d일')} ({days_map[day_weekday]}) 맞춤 시간표")
 
-def to_minutes(t_str):
-    h, m = map(int, t_str.split(":"))
-    return h * 60 + m
+def to_minutes(val):
+    if isinstance(val, (int, float)):
+        return int(val) * 60
+    if isinstance(val, str):
+        try:
+            h, m = map(int, val.split(":"))
+            return h * 60 + m
+        except:
+            return 0
+    return 0
 
 slp = selected_day_schedule.get("sleep", ["02:00", "08:00"])
 sch = selected_day_schedule.get("school", ["08:00", "16:00"])
@@ -438,14 +431,13 @@ aca = selected_day_schedule.get("academy", ["00:00", "00:00"])
 lnc = selected_day_schedule.get("lunch", ["12:00", "13:00"])
 din = selected_day_schedule.get("dinner", ["17:00", "18:00"])
 
-# 30분 단위 슬롯 생성 (48개)
 slots = [i * 30 for i in range(48)]
 blocked_slots = {}
 available_slots = []
 
-def check_blocked(slot_min, range_str_list, label):
-    start_m = to_minutes(range_str_list[0])
-    end_m = to_minutes(range_str_list[1])
+def check_blocked(slot_min, range_list):
+    start_m = to_minutes(range_list[0])
+    end_m = to_minutes(range_list[1])
     if start_m == end_m:
         return False
     if start_m < end_m:
@@ -454,15 +446,15 @@ def check_blocked(slot_min, range_str_list, label):
         return slot_min >= start_m or slot_min < end_m
 
 for s in slots:
-    if check_blocked(s, slp, "🔒 🌙 수면 시간"):
+    if check_blocked(s, slp):
         blocked_slots[s] = "🔒 🌙 수면 시간"
-    elif check_blocked(s, sch, "🔒 🏫 학교 수업"):
+    elif check_blocked(s, sch):
         blocked_slots[s] = "🔒 🏫 학교 수업"
-    elif check_blocked(s, aca, "🔒 ✏️ 학원 수업"):
+    elif check_blocked(s, aca):
         blocked_slots[s] = "🔒 ✏️ 학원 수업"
-    elif check_blocked(s, lnc, "🔒 🍱 점심 식사/휴식"):
+    elif check_blocked(s, lnc):
         blocked_slots[s] = "🔒 🍱 점심 식사/휴식"
-    elif check_blocked(s, din, "🔒 🍽️ 저녁 식사/휴식"):
+    elif check_blocked(s, din):
         blocked_slots[s] = "🔒 🍽️ 저녁 식사/휴식"
     else:
         available_slots.append(s)
