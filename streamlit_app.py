@@ -2,20 +2,21 @@ import streamlit as st
 import datetime
 import random
 import json
+import re
+from PIL import Image
+import pytesseract
 
-# 1. 페이지 설정 및 폰트 충돌 해결 CSS 적용
+# 1. 페이지 설정 및 폰트 충돌 해결 CSS
 st.set_page_config(page_title="STUDY DASHBOARD", layout="wide", page_icon="✨")
 
 st.markdown("""
     <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     
-    /* Pretendard 폰트 적용 (아이콘 요소 제외) */
     html, body, [class*="css"], div, p, span, h1, h2, h3, h4, button, input {
         font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
     }
     
-    /* Streamlit 머티리얼 아이콘 폰트 보존 (arrow_drop_down 깨짐 방지) */
     .st-emotion-cache-1e5ec1a, [data-testid="stExpanderToggleIcon"] i, .material-symbols-outlined {
         font-family: 'Material Symbols Outlined', 'Material Icons' !important;
     }
@@ -31,7 +32,6 @@ st.markdown("""
         padding-top: 1rem;
     }
     
-    /* 대시보드 헤더 */
     .hero-header {
         background: linear-gradient(135deg, #6C5CE7 0%, #a29bfe 100%);
         color: white;
@@ -54,7 +54,6 @@ st.markdown("""
         margin-top: 6px;
     }
     
-    /* 응원 박스 */
     .cheer-card {
         background: #FFFFFF;
         border: 1px solid #E9ECEF;
@@ -67,7 +66,6 @@ st.markdown("""
         margin-bottom: 24px;
     }
     
-    /* 타임테이블 블록 */
     .blocked-summary {
         background-color: #F1F3F5;
         border: 1px solid #E9ECEF;
@@ -89,7 +87,6 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
-    /* 버튼 */
     .stButton>button {
         border-radius: 10px !important;
         border: 1px solid #CED4DA !important;
@@ -204,13 +201,12 @@ for i, tab in enumerate(day_tabs):
 st.markdown("""
     <div class="hero-header">
         <div class="hero-title">✨ Study Planner Dashboard</div>
-        <div class="hero-subtitle">출판사 및 교재 맞춤형 시험 공부 & 일일 정밀 시간표</div>
+        <div class="hero-subtitle">사진 인식(OCR) & 출판사 맞춤형 시험 공부 플래너</div>
     </div>
 """, unsafe_allow_html=True)
 
 st.markdown(f'<div class="cheer-card">{random.choice(CHEERING_MESSAGES)}</div>', unsafe_allow_html=True)
 
-# D-Day 카드
 if today > end_date:
     st.success("🎉 시험 기간이 종료되었습니다! 정말 고생 많으셨습니다.")
     st.stop()
@@ -234,7 +230,55 @@ st.divider()
 # 과목목록 및 체크리스트
 st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
-with st.expander("➕ 새 과목 / 출판사 / 시험범위 추가하기"):
+# 1. 📷 사진으로 시험범위 자동 등록 (OCR 연동)
+with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 번에 자동 등록하기"):
+    st.caption("시험범위 프린트나 가정통신문 사진을 올리시면 AI OCR이 글자를 자동으로 분석해 등록합니다.")
+    uploaded_file = st.file_uploader("시험범위 이미지 파일 업로드 (JPG, PNG)", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        img = Image.open(uploaded_file)
+        st.image(img, caption="업로드된 시험범위 이미지", use_container_width=True)
+        
+        if st.button("✨ 사진에서 시험범위 자동 추출하기"):
+            with st.spinner("사진 속 글자를 읽는 중입니다..."):
+                try:
+                    # 한국어 + 영어 OCR 수행
+                    extracted_text = pytesseract.image_to_string(img, lang="kor+eng")
+                    
+                    lines = [line.strip() for line in extracted_text.split("\n") if line.strip()]
+                    
+                    added_count = 0
+                    for line in lines:
+                        # 과목 구분자 (콜론, 바, 탭 등)가 있거나 주요 과목명이 포함된 줄 파싱
+                        match = re.search(r'(국어|수학|영어|사회|과학|역사|기타)[:\-\s]+(.+)', line)
+                        if match:
+                            subj = match.group(1)
+                            content = match.group(2)
+                            st.session_state.tasks.append({
+                                "subject": subj,
+                                "publisher": "사진인식",
+                                "unit": content,
+                                "done": False
+                            })
+                            added_count += 1
+                        elif len(line) > 3:
+                            # 특정 과목으로 분리되지 않은 경우 일반 항목으로 추가
+                            st.session_state.tasks.append({
+                                "subject": "기타과목",
+                                "publisher": "사진인식",
+                                "unit": line,
+                                "done": False
+                            })
+                            added_count += 1
+                            
+                    sync_storage()
+                    st.success(f"🎉 총 {added_count}개의 시험범위를 사진에서 추출하여 등록했습니다!")
+                    st.rerun()
+                except Exception as e:
+                    st.error("OCR 처리 중 오류가 발생했습니다. Tesseract 패키지 설치 여부를 확인해주세요.")
+
+# 2. ➕ 직접 입력 등록
+with st.expander("➕ 직접 입력으로 과목/출판사/시험범위 추가하기"):
     with st.form("add_task_form", clear_on_submit=True):
         col_in1, col_in2 = st.columns([2, 2])
         with col_in1:
