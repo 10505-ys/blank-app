@@ -22,7 +22,7 @@ if "weekly_schedule" not in st.session_state:
     for i in range(7):
         if i < 5: # 평일
             st.session_state.weekly_schedule[i] = {
-                "sleep": (2, 8),    # 새벽 2시 취침 ~ 아침 8시 기상 (새벽 공부 반영)
+                "sleep": (2, 8),    # 새벽 2시 취침 ~ 아침 8시 기상
                 "school": (8, 16),
                 "academy": (18, 21),
                 "dinner": (17, 18)
@@ -53,7 +53,6 @@ for i, tab in enumerate(day_tabs):
     with tab:
         st.caption(f"📌 {days_map[i]} 일정 설정")
         
-        # 취침 및 기상 시간 설정 (예: 2시~8시)
         slp = st.slider(f"🌙 취침 ~ 기상 시간", 0, 24, st.session_state.weekly_schedule[i]["sleep"], key=f"slp_{i}")
         sch = st.slider(f"🏫 학교 시간", 0, 24, st.session_state.weekly_schedule[i]["school"], key=f"sch_{i}")
         aca = st.slider(f"✏️ 학원 시간", 0, 24, st.session_state.weekly_schedule[i]["academy"], key=f"aca_{i}")
@@ -130,9 +129,9 @@ for idx, task in enumerate(st.session_state.tasks):
 st.divider()
 
 # ---------------------------------------------------------
-# 기능 3: 달력 클릭형 그리드 (날짜 클릭 시 이동)
+# 기능 3: 달력 클릭형 그리드 (괄호 제거 완료)
 # ---------------------------------------------------------
-st.subheader("🗓️ 달력 일정표 (날짜 클릭 시 바로 이동)")
+st.subheader("🗓️ 달력 일정표")
 
 # 날짜 이동 상단 버튼
 btn_col1, btn_col2, btn_col3, date_col = st.columns([1, 1, 1, 3])
@@ -199,13 +198,12 @@ din_range = selected_day_schedule["dinner"]
 available_hours = []
 blocked_reasons = {}
 
-# 수면 시간이 자정을 넘기는 경우 처리 (예: 23시 ~ 06시 또는 02시 ~ 08시)
 def is_in_range(hour, start_h, end_h):
     if start_h == end_h:
         return False
     if start_h < end_h:
         return start_h <= hour < end_h
-    else: # 자정을 넘어가는 시간대 (예: 23:00 ~ 06:00)
+    else:
         return hour >= start_h or hour < end_h
 
 for hour in range(24):
@@ -224,7 +222,6 @@ uncompleted_tasks = [t for t in st.session_state.tasks if not t["done"]]
 
 st.info(f"💡 **{days_map[day_weekday]}** 수면/학교/학원 시간을 제외하고 **실제 공부 가능한 순수 자습 시간은 총 {len(available_hours)}시간**입니다.")
 
-# 시간표 구성 및 출력
 if uncompleted_tasks and available_hours:
     subj_index = 0
     num_subj = len(uncompleted_tasks)
@@ -241,7 +238,6 @@ if uncompleted_tasks and available_hours:
             subj_index += 1
             current_hour_count = 0
 
-    # 24시간 전체 출력
     for hour in range(24):
         time_str = f"{hour:02d}:00 ~ {(hour+1)%24:02d}:00"
         
