@@ -4,12 +4,17 @@ import random
 import json
 import re
 from PIL import Image
+import numpy as np
 
-# pytesseract 안전 로딩
+# EasyOCR 로딩 (서버 패키지 설치 없이 100% 동작)
 try:
-    import pytesseract
+    import easyocr
+    @st.cache_resource
+    def load_ocr_reader():
+        return easyocr.Reader(['ko', 'en'])
+    reader = load_ocr_reader()
     OCR_AVAILABLE = True
-except ImportError:
+except Exception as e:
     OCR_AVAILABLE = False
 
 st.set_page_config(page_title="STUDY DASHBOARD", layout="wide", page_icon="✨")
@@ -221,7 +226,6 @@ for i, tab in enumerate(day_tabs):
         slp_val = (parse_time(sch_data.get("sleep", ["02:00", "08:00"])[0]), parse_time(sch_data.get("sleep", ["02:00", "08:00"])[1]))
         sch_val = (parse_time(sch_data.get("school", ["08:00", "16:00"])[0]), parse_time(sch_data.get("school", ["08:00", "16:00"])[1]))
         
-        # 학원 1, 학원 2 세팅
         aca1_raw = sch_data.get("academy1", sch_data.get("academy", ["00:00", "00:00"]))
         aca1_val = (parse_time(aca1_raw[0]), parse_time(aca1_raw[1]))
         aca2_val = (parse_time(sch_data.get("academy2", ["00:00", "00:00"])[0]), parse_time(sch_data.get("academy2", ["00:00", "00:00"])[1]))
@@ -271,7 +275,7 @@ st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
 with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 번에 자동 등록하기"):
     if not OCR_AVAILABLE:
-        st.warning("⚠️ 서버에서 OCR 엔진을 설치하는 중입니다. 잠시 후 새로고침 해보시거나 아래 수동 입력 칸을 이용해 주세요.")
+        st.warning("⚠️ OCR 모듈을 로딩 중이거나 오류가 발생했습니다. 잠시 후 새로고침 하시거나 아래 수동 입력 칸을 이용해 주세요.")
     else:
         st.caption("시험범위 프린트나 가정통신문 사진을 올리시면 AI가 글자를 자동으로 분석해 등록합니다.")
         uploaded_file = st.file_uploader("시험범위 이미지 파일 업로드 (JPG, PNG)", type=["jpg", "jpeg", "png"])
@@ -281,10 +285,11 @@ with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 
             st.image(img, caption="업로드된 시험범위 이미지", use_container_width=True)
             
             if st.button("✨ 사진에서 시험범위 자동 추출하기"):
-                with st.spinner("사진 속 글자를 읽는 중입니다..."):
+                with st.spinner("사진 속 글자를 읽는 중입니다 (초기 실행 시 약간의 시간이 소요될 수 있습니다)..."):
                     try:
-                        extracted_text = pytesseract.image_to_string(img, lang="kor+eng")
-                        lines = [line.strip() for line in extracted_text.split("\n") if line.strip()]
+                        img_np = np.array(img)
+                        results = reader.readtext(img_np)
+                        lines = [res[1].strip() for res in results if res[1].strip()]
                         
                         added_count = 0
                         for line in lines:
@@ -312,7 +317,7 @@ with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 
                         st.success(f"🎉 총 {added_count}개의 시험범위를 사진에서 추출하여 등록했습니다!")
                         st.rerun()
                     except Exception as e:
-                        st.error("OCR 가공 중 문제가 발생했습니다. 사진을 더 선명하게 찍어 업로드해보세요.")
+                        st.error(f"OCR 분석 중 문제가 발생했습니다: {e}")
 
 with st.expander("➕ 직접 입력으로 과목/출판사/시험범위 추가하기"):
     with st.form("add_task_form", clear_on_submit=True):
