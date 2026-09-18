@@ -116,9 +116,9 @@ DEFAULT_SCHEDULE = {
 }
 
 DEFAULT_TASKS = [
-    {"subject": "국어", "unit": "1~2단원 개념 복습", "done": False},
-    {"subject": "수학", "unit": "이차방정식 유형 풀이", "done": False},
-    {"subject": "영어", "unit": "1과 본문 암기", "done": False}
+    {"subject": "국어", "publisher": "미래엔", "unit": "1~2단원 개념 복습", "done": False},
+    {"subject": "수학", "publisher": "비상교육", "unit": "이차방정식 유형 풀이", "done": False},
+    {"subject": "영어", "publisher": "천재(이)", "unit": "1과 본문 암기", "done": False}
 ]
 
 params = st.query_params
@@ -198,7 +198,7 @@ for i, tab in enumerate(day_tabs):
 st.markdown("""
     <div class="hero-header">
         <div class="hero-title">✨ Study Planner Dashboard</div>
-        <div class="hero-subtitle">스마트하게 관리하는 나만의 시험 공부 및 일일 맞춤 시간표</div>
+        <div class="hero-subtitle">출판사 및 교재 맞춤형 시험 공부 & 일일 정밀 시간표</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -225,16 +225,28 @@ with col_info:
 
 st.divider()
 
-# 과목목록 및 체크리스트
-st.subheader("✅ 과목별 공부 목표")
+# 과목목록 및 체크리스트 (출판사/교재 입력 지원)
+st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
-with st.expander("➕ 새 과목/시험범위 추가하기"):
+with st.expander("➕ 새 과목 / 출판사 / 시험범위 추가하기"):
     with st.form("add_task_form", clear_on_submit=True):
-        new_subject = st.text_input("과목명 (예: 국어, 수학)")
-        new_unit = st.text_input("시험 범위/단원 (예: 1~3단원)")
-        submitted = st.form_submit_button("추가하기")
+        col_in1, col_in2 = st.columns([2, 2])
+        with col_in1:
+            new_subject = st.text_input("과목명 (예: 국어, 수학)")
+        with col_in2:
+            new_publisher = st.text_input("출판사 / 교재명 (예: 미래엔, 비상, 학교 프린트)")
+            
+        new_unit = st.text_input("시험 범위 / 학습 목표 (예: 1~3단원 본문 및 문제풀이)")
+        submitted = st.form_submit_button("등록하기")
+        
         if submitted and new_subject and new_unit:
-            st.session_state.tasks.append({"subject": new_subject, "unit": new_unit, "done": False})
+            pub_text = new_publisher.strip() if new_publisher.strip() else "자체 교재"
+            st.session_state.tasks.append({
+                "subject": new_subject,
+                "publisher": pub_text,
+                "unit": new_unit,
+                "done": False
+            })
             sync_storage()
             st.rerun()
 
@@ -246,16 +258,20 @@ st.metric(label="🏆 전체 달성률", value=f"{achievement_rate}%", delta=f"{
 
 for idx, task in enumerate(st.session_state.tasks):
     col_check, col_text, col_del = st.columns([1, 6, 1])
+    pub_info = f"({task.get('publisher', '자체교재')})" if task.get('publisher') else ""
+    
     with col_check:
         is_done = st.checkbox("", value=task["done"], key=f"check_{idx}")
         if is_done != st.session_state.tasks[idx]["done"]:
             st.session_state.tasks[idx]["done"] = is_done
             sync_storage()
+            
     with col_text:
         if task["done"]:
-            st.markdown(f"~~**[{task['subject']}]** {task['unit']}~~ ✅")
+            st.markdown(f"~~**[{task['subject']} {pub_info}]** {task['unit']}~~ ✅")
         else:
-            st.write(f"**[{task['subject']}]** {task['unit']}")
+            st.write(f"**[{task['subject']} {pub_info}]** {task['unit']}")
+            
     with col_del:
         if st.button("삭제", key=f"del_{idx}"):
             st.session_state.tasks.pop(idx)
@@ -358,7 +374,8 @@ if uncompleted_tasks and available_hours:
     
     for h in available_hours:
         current_task = uncompleted_tasks[subj_index % num_subj]
-        assigned_schedule[h] = f"📚 [{current_task['subject']}] {current_task['unit']}"
+        pub_str = f"({current_task.get('publisher', '')})" if current_task.get('publisher') else ""
+        assigned_schedule[h] = f"📚 [{current_task['subject']} {pub_str}] {current_task['unit']}"
         current_hour_count += 1
         if current_hour_count >= hours_per_subj and (subj_index + 1) < num_subj:
             subj_index += 1
