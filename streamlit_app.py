@@ -5,14 +5,13 @@ import json
 import re
 from PIL import Image
 
-# pytesseract 모듈을 안전하게 불러오기 (설치 안 되어 있어도 앱이 튕기지 않음)
+# pytesseract 안전 로딩
 try:
     import pytesseract
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
 
-# 1. 페이지 설정 및 폰트 충돌 해결 CSS
 st.set_page_config(page_title="STUDY DASHBOARD", layout="wide", page_icon="✨")
 
 st.markdown("""
@@ -75,7 +74,7 @@ st.markdown("""
     .blocked-summary {
         background-color: #F1F3F5;
         border: 1px solid #E9ECEF;
-        padding: 12px 18px;
+        padding: 10px 16px;
         border-radius: 10px;
         color: #868E96;
         margin-bottom: 8px;
@@ -85,7 +84,7 @@ st.markdown("""
     .study-summary {
         background: linear-gradient(90deg, #E8F5E9 0%, #C8E6C9 100%);
         border-left: 4px solid #4CAF50;
-        padding: 12px 18px;
+        padding: 10px 16px;
         border-radius: 10px;
         color: #2E7D32;
         margin-bottom: 8px;
@@ -115,12 +114,21 @@ CHEERING_MESSAGES = [
     "🎯 시험 당일, 아는 문제는 확실하게! 찍는 문제도 정답으로 이어지는 행운이 함께하길!"
 ]
 
+# 시간 보조 함수 (문자열 HH:MM <-> datetime.time 객체)
+def parse_time(t_str):
+    h, m = map(int, t_str.split(":"))
+    return datetime.time(h, m)
+
+def format_time(t_obj):
+    return t_obj.strftime("%H:%M")
+
 DEFAULT_SCHEDULE = {
     str(i): {
-        "sleep": [2, 8] if i < 5 else [3, 10],
-        "school": [8, 16] if i < 5 else [0, 0],
-        "academy": [18, 21] if i < 5 else ([13, 17] if i == 5 else [0, 0]),
-        "dinner": [17, 18] if i < 5 else [18, 19]
+        "sleep": ["02:00", "08:00"] if i < 5 else ["03:00", "10:00"],
+        "school": ["08:00", "16:00"] if i < 5 else ["00:00", "00:00"],
+        "academy": ["18:00", "21:00"] if i < 5 else (["13:00", "17:00"] if i == 5 else ["00:00", "00:00"]),
+        "lunch": ["12:00", "13:00"],
+        "dinner": ["17:00", "18:00"]
     } for i in range(7)
 }
 
@@ -179,7 +187,7 @@ def sync_storage():
 
 def update_schedule_callback(day_idx, key_type):
     val = st.session_state[f"{key_type}_{day_idx}"]
-    st.session_state.weekly_schedule[day_idx][key_type] = list(val)
+    st.session_state.weekly_schedule[day_idx][key_type] = [format_time(val[0]), format_time(val[1])]
     sync_storage()
 
 days_map = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
@@ -190,7 +198,7 @@ start_date = st.sidebar.date_input("시험 시작일", init_start, key="start_da
 end_date = st.sidebar.date_input("시험 종료일", init_end, key="end_date_picker", on_change=sync_storage)
 
 st.sidebar.divider()
-st.sidebar.header("🏫 요일별 일과 & 수면 설정")
+st.sidebar.header("🏫 요일별 일과 & 수면 설정 (30분 단위)")
 
 day_tabs = st.sidebar.tabs(["월", "화", "수", "목", "금", "토", "일"])
 for i, tab in enumerate(day_tabs):
@@ -198,16 +206,50 @@ for i, tab in enumerate(day_tabs):
         st.caption(f"📌 {days_map[i]} 일정 설정")
         sch_data = st.session_state.weekly_schedule[i]
         
-        st.slider("🌙 취침 ~ 기상", 0, 24, tuple(sch_data["sleep"]), key=f"sleep_{i}", on_change=update_schedule_callback, args=(i, "sleep"))
-        st.slider("🏫 학교 시간", 0, 24, tuple(sch_data["school"]), key=f"school_{i}", on_change=update_schedule_callback, args=(i, "school"))
-        st.slider("✏️ 학원 시간", 0, 24, tuple(sch_data["academy"]), key=f"academy_{i}", on_change=update_schedule_callback, args=(i, "academy"))
-        st.slider("🍽️ 식사/휴식", 0, 24, tuple(sch_data["dinner"]), key=f"dinner_{i}", on_change=update_schedule_callback, args=(i, "dinner"))
+        # 30분 단위 시간 선택
+        time_step = datetime.timedelta(minutes=30)
+        
+        st.slider(
+            "🌙 취침 ~ 기상",
+            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
+            value=(parse_time(sch_data["sleep"][0]), parse_time(sch_data["sleep"][1])),
+            step=time_step, format="HH:mm", key=f"sleep_{i}",
+            on_change=update_schedule_callback, args=(i, "sleep")
+        )
+        st.slider(
+            "🏫 학교 시간",
+            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
+            value=(parse_time(sch_data["school"][0]), parse_time(sch_data["school"][1])),
+            step=time_step, format="HH:mm", key=f"school_{i}",
+            on_change=update_schedule_callback, args=(i, "school")
+        )
+        st.slider(
+            "✏️ 학원 시간",
+            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
+            value=(parse_time(sch_data.get("academy", ["00:00", "00:00"])[0]), parse_time(sch_data.get("academy", ["00:00", "00:00"])[1])),
+            step=time_step, format="HH:mm", key=f"academy_{i}",
+            on_change=update_schedule_callback, args=(i, "academy")
+        )
+        st.slider(
+            "🍱 점심 식사/휴식",
+            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
+            value=(parse_time(sch_data.get("lunch", ["12:00", "13:00"])[0]), parse_time(sch_data.get("lunch", ["12:00", "13:00"])[1])),
+            step=time_step, format="HH:mm", key=f"lunch_{i}",
+            on_change=update_schedule_callback, args=(i, "lunch")
+        )
+        st.slider(
+            "🍽️ 저녁 식사/휴식",
+            min_value=datetime.time(0, 0), max_value=datetime.time(23, 30),
+            value=(parse_time(sch_data.get("dinner", ["17:00", "18:00"])[0]), parse_time(sch_data.get("dinner", ["17:00", "18:00"])[1])),
+            step=time_step, format="HH:mm", key=f"dinner_{i}",
+            on_change=update_schedule_callback, args=(i, "dinner")
+        )
 
 # 메인 헤더
 st.markdown("""
     <div class="hero-header">
         <div class="hero-title">✨ Study Planner Dashboard</div>
-        <div class="hero-subtitle">사진 인식(OCR) & 출판사 맞춤형 시험 공부 플래너</div>
+        <div class="hero-subtitle">사진 인식(OCR) & 30분 정밀 세분화 시험 플래너</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -236,7 +278,6 @@ st.divider()
 # 과목목록 및 체크리스트
 st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
-# 1. 📷 사진으로 시험범위 자동 등록
 with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 번에 자동 등록하기"):
     if not OCR_AVAILABLE:
         st.warning("⚠️ 서버에서 OCR 엔진을 설치하는 중입니다. 잠시 후 새로고침 해보시거나 아래 수동 입력 칸을 이용해 주세요.")
@@ -282,7 +323,6 @@ with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 
                     except Exception as e:
                         st.error("OCR 가공 중 문제가 발생했습니다. 사진을 더 선명하게 찍어 업로드해보세요.")
 
-# 2. ➕ 직접 입력 등록
 with st.expander("➕ 직접 입력으로 과목/출판사/시험범위 추가하기"):
     with st.form("add_task_form", clear_on_submit=True):
         col_in1, col_in2 = st.columns([2, 2])
@@ -381,88 +421,109 @@ for i in range(0, len(days_list), cols_per_row):
 
 st.divider()
 
-# 시간표
+# 30분 단위 타임테이블 계산
 target_date = st.session_state.selected_date
 day_weekday = target_date.weekday()
 selected_day_schedule = st.session_state.weekly_schedule[day_weekday]
 
 st.subheader(f"⏰ {target_date.strftime('%Y년 %m월 %d일')} ({days_map[day_weekday]}) 맞춤 시간표")
 
-slp_range = selected_day_schedule["sleep"]
-sch_range = selected_day_schedule["school"]
-aca_range = selected_day_schedule["academy"]
-din_range = selected_day_schedule["dinner"]
+def to_minutes(t_str):
+    h, m = map(int, t_str.split(":"))
+    return h * 60 + m
 
-available_hours = []
-blocked_reasons = {}
+slp = selected_day_schedule.get("sleep", ["02:00", "08:00"])
+sch = selected_day_schedule.get("school", ["08:00", "16:00"])
+aca = selected_day_schedule.get("academy", ["00:00", "00:00"])
+lnc = selected_day_schedule.get("lunch", ["12:00", "13:00"])
+din = selected_day_schedule.get("dinner", ["17:00", "18:00"])
 
-def is_in_range(hour, start_h, end_h):
-    if start_h == end_h:
+# 30분 단위 슬롯 생성 (48개)
+slots = [i * 30 for i in range(48)]
+blocked_slots = {}
+available_slots = []
+
+def check_blocked(slot_min, range_str_list, label):
+    start_m = to_minutes(range_str_list[0])
+    end_m = to_minutes(range_str_list[1])
+    if start_m == end_m:
         return False
-    if start_h < end_h:
-        return start_h <= hour < end_h
+    if start_m < end_m:
+        return start_m <= slot_min < end_m
     else:
-        return hour >= start_h or hour < end_h
+        return slot_min >= start_m or slot_min < end_m
 
-for hour in range(24):
-    if is_in_range(hour, slp_range[0], slp_range[1]):
-        blocked_reasons[hour] = "🔒 🌙 수면 시간"
-    elif is_in_range(hour, sch_range[0], sch_range[1]):
-        blocked_reasons[hour] = "🔒 🏫 학교 수업"
-    elif is_in_range(hour, aca_range[0], aca_range[1]):
-        blocked_reasons[hour] = "🔒 ✏️ 학원 수업"
-    elif is_in_range(hour, din_range[0], din_range[1]):
-        blocked_reasons[hour] = "🔒 🍽️ 식사 및 휴식"
+for s in slots:
+    if check_blocked(s, slp, "🔒 🌙 수면 시간"):
+        blocked_slots[s] = "🔒 🌙 수면 시간"
+    elif check_blocked(s, sch, "🔒 🏫 학교 수업"):
+        blocked_slots[s] = "🔒 🏫 학교 수업"
+    elif check_blocked(s, aca, "🔒 ✏️ 학원 수업"):
+        blocked_slots[s] = "🔒 ✏️ 학원 수업"
+    elif check_blocked(s, lnc, "🔒 🍱 점심 식사/휴식"):
+        blocked_slots[s] = "🔒 🍱 점심 식사/휴식"
+    elif check_blocked(s, din, "🔒 🍽️ 저녁 식사/휴식"):
+        blocked_slots[s] = "🔒 🍽️ 저녁 식사/휴식"
     else:
-        available_hours.append(hour)
+        available_slots.append(s)
 
 uncompleted_tasks = [t for t in st.session_state.tasks if not t["done"]]
+avail_hours = len(available_slots) * 0.5
 
-st.info(f"💡 **{days_map[day_weekday]}** 수면/일정을 제외한 순수 자습 시간 : **총 {len(available_hours)}시간**")
+st.info(f"💡 **{days_map[day_weekday]}** 수면/일정을 제외한 순수 자습 시간 : **총 {avail_hours:.1f}시간**")
 
-assigned_schedule = {}
-if uncompleted_tasks and available_hours:
-    subj_index = 0
+assigned_slots = {}
+if uncompleted_tasks and available_slots:
     num_subj = len(uncompleted_tasks)
-    hours_per_subj = max(1, len(available_hours) // num_subj)
-    current_hour_count = 0
+    slots_per_subj = max(1, len(available_slots) // num_subj)
+    subj_idx = 0
+    cnt = 0
     
-    for h in available_hours:
-        current_task = uncompleted_tasks[subj_index % num_subj]
+    for s in available_slots:
+        current_task = uncompleted_tasks[subj_idx % num_subj]
         pub_str = f"({current_task.get('publisher', '')})" if current_task.get('publisher') else ""
-        assigned_schedule[h] = f"📚 [{current_task['subject']} {pub_str}] {current_task['unit']}"
-        current_hour_count += 1
-        if current_hour_count >= hours_per_subj and (subj_index + 1) < num_subj:
-            subj_index += 1
-            current_hour_count = 0
+        assigned_slots[s] = f"📚 [{current_task['subject']} {pub_str}] {current_task['unit']}"
+        cnt += 1
+        if cnt >= slots_per_subj and (subj_idx + 1) < num_subj:
+            subj_idx += 1
+            cnt = 0
+
+def slot_to_time_str(m):
+    h = m // 60
+    mins = m % 60
+    return f"{h:02d}:{mins:02d}"
 
 schedule_blocks = []
-start_h = 0
+curr_idx = 0
 
-while start_h < 24:
-    if start_h in blocked_reasons:
-        reason = blocked_reasons[start_h]
-        end_h = start_h + 1
-        while end_h < 24 and end_h in blocked_reasons and blocked_reasons[end_h] == reason:
-            end_h += 1
-        schedule_blocks.append({"start": start_h, "end": end_h, "type": "blocked", "desc": reason})
-        start_h = end_h
-    elif start_h in assigned_schedule:
-        task_desc = assigned_schedule[start_h]
-        end_h = start_h + 1
-        while end_h < 24 and end_h in assigned_schedule and assigned_schedule[end_h] == task_desc:
-            end_h += 1
-        schedule_blocks.append({"start": start_h, "end": end_h, "type": "study", "desc": task_desc})
-        start_h = end_h
+while curr_idx < len(slots):
+    s = slots[curr_idx]
+    if s in blocked_slots:
+        reason = blocked_slots[s]
+        end_idx = curr_idx + 1
+        while end_idx < len(slots) and slots[end_idx] in blocked_slots and blocked_slots[slots[end_idx]] == reason:
+            end_idx += 1
+        end_min = slots[end_idx] if end_idx < len(slots) else 1440
+        schedule_blocks.append({"start": slot_to_time_str(s), "end": slot_to_time_str(end_min), "type": "blocked", "desc": reason})
+        curr_idx = end_idx
+    elif s in assigned_slots:
+        task_desc = assigned_slots[s]
+        end_idx = curr_idx + 1
+        while end_idx < len(slots) and slots[end_idx] in assigned_slots and assigned_slots[slots[end_idx]] == task_desc:
+            end_idx += 1
+        end_min = slots[end_idx] if end_idx < len(slots) else 1440
+        schedule_blocks.append({"start": slot_to_time_str(s), "end": slot_to_time_str(end_min), "type": "study", "desc": task_desc})
+        curr_idx = end_idx
     else:
-        end_h = start_h + 1
-        while end_h < 24 and (end_h not in blocked_reasons) and (end_h not in assigned_schedule):
-            end_h += 1
-        schedule_blocks.append({"start": start_h, "end": end_h, "type": "free", "desc": "☕ 자율 학습 및 개인 정비"})
-        start_h = end_h
+        end_idx = curr_idx + 1
+        while end_idx < len(slots) and (slots[end_idx] not in blocked_slots) and (slots[end_idx] not in assigned_slots):
+            end_idx += 1
+        end_min = slots[end_idx] if end_idx < len(slots) else 1440
+        schedule_blocks.append({"start": slot_to_time_str(s), "end": slot_to_time_str(end_min), "type": "free", "desc": "☕ 자율 학습 및 개인 정비"})
+        curr_idx = end_idx
 
 for block in schedule_blocks:
-    time_str = f"{block['start']:02d}:00 ~ {block['end']:02d}:00"
+    time_str = f"{block['start']} ~ {block['end']}"
     
     if block["type"] == "blocked":
         st.markdown(
