@@ -4,7 +4,13 @@ import random
 import json
 import re
 from PIL import Image
-import pytesseract
+
+# pytesseract 모듈을 안전하게 불러오기 (설치 안 되어 있어도 앱이 튕기지 않음)
+try:
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 # 1. 페이지 설정 및 폰트 충돌 해결 CSS
 st.set_page_config(page_title="STUDY DASHBOARD", layout="wide", page_icon="✨")
@@ -230,52 +236,51 @@ st.divider()
 # 과목목록 및 체크리스트
 st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
-# 1. 📷 사진으로 시험범위 자동 등록 (OCR 연동)
+# 1. 📷 사진으로 시험범위 자동 등록
 with st.expander("📷 사진(가정통신문/시험범위표) 첨부해서 한 번에 자동 등록하기"):
-    st.caption("시험범위 프린트나 가정통신문 사진을 올리시면 AI OCR이 글자를 자동으로 분석해 등록합니다.")
-    uploaded_file = st.file_uploader("시험범위 이미지 파일 업로드 (JPG, PNG)", type=["jpg", "jpeg", "png"])
-    
-    if uploaded_file is not None:
-        img = Image.open(uploaded_file)
-        st.image(img, caption="업로드된 시험범위 이미지", use_container_width=True)
+    if not OCR_AVAILABLE:
+        st.warning("⚠️ 서버에서 OCR 엔진을 설치하는 중입니다. 잠시 후 새로고침 해보시거나 아래 수동 입력 칸을 이용해 주세요.")
+    else:
+        st.caption("시험범위 프린트나 가정통신문 사진을 올리시면 AI가 글자를 자동으로 분석해 등록합니다.")
+        uploaded_file = st.file_uploader("시험범위 이미지 파일 업로드 (JPG, PNG)", type=["jpg", "jpeg", "png"])
         
-        if st.button("✨ 사진에서 시험범위 자동 추출하기"):
-            with st.spinner("사진 속 글자를 읽는 중입니다..."):
-                try:
-                    # 한국어 + 영어 OCR 수행
-                    extracted_text = pytesseract.image_to_string(img, lang="kor+eng")
-                    
-                    lines = [line.strip() for line in extracted_text.split("\n") if line.strip()]
-                    
-                    added_count = 0
-                    for line in lines:
-                        # 과목 구분자 (콜론, 바, 탭 등)가 있거나 주요 과목명이 포함된 줄 파싱
-                        match = re.search(r'(국어|수학|영어|사회|과학|역사|기타)[:\-\s]+(.+)', line)
-                        if match:
-                            subj = match.group(1)
-                            content = match.group(2)
-                            st.session_state.tasks.append({
-                                "subject": subj,
-                                "publisher": "사진인식",
-                                "unit": content,
-                                "done": False
-                            })
-                            added_count += 1
-                        elif len(line) > 3:
-                            # 특정 과목으로 분리되지 않은 경우 일반 항목으로 추가
-                            st.session_state.tasks.append({
-                                "subject": "기타과목",
-                                "publisher": "사진인식",
-                                "unit": line,
-                                "done": False
-                            })
-                            added_count += 1
-                            
-                    sync_storage()
-                    st.success(f"🎉 총 {added_count}개의 시험범위를 사진에서 추출하여 등록했습니다!")
-                    st.rerun()
-                except Exception as e:
-                    st.error("OCR 처리 중 오류가 발생했습니다. Tesseract 패키지 설치 여부를 확인해주세요.")
+        if uploaded_file is not None:
+            img = Image.open(uploaded_file)
+            st.image(img, caption="업로드된 시험범위 이미지", use_container_width=True)
+            
+            if st.button("✨ 사진에서 시험범위 자동 추출하기"):
+                with st.spinner("사진 속 글자를 읽는 중입니다..."):
+                    try:
+                        extracted_text = pytesseract.image_to_string(img, lang="kor+eng")
+                        lines = [line.strip() for line in extracted_text.split("\n") if line.strip()]
+                        
+                        added_count = 0
+                        for line in lines:
+                            match = re.search(r'(국어|수학|영어|사회|과학|역사|기타)[:\-\s]+(.+)', line)
+                            if match:
+                                subj = match.group(1)
+                                content = match.group(2)
+                                st.session_state.tasks.append({
+                                    "subject": subj,
+                                    "publisher": "사진인식",
+                                    "unit": content,
+                                    "done": False
+                                })
+                                added_count += 1
+                            elif len(line) > 3:
+                                st.session_state.tasks.append({
+                                    "subject": "기타과목",
+                                    "publisher": "사진인식",
+                                    "unit": line,
+                                    "done": False
+                                })
+                                added_count += 1
+                                
+                        sync_storage()
+                        st.success(f"🎉 총 {added_count}개의 시험범위를 사진에서 추출하여 등록했습니다!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error("OCR 가공 중 문제가 발생했습니다. 사진을 더 선명하게 찍어 업로드해보세요.")
 
 # 2. ➕ 직접 입력 등록
 with st.expander("➕ 직접 입력으로 과목/출판사/시험범위 추가하기"):
