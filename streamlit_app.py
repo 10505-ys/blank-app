@@ -3,15 +3,21 @@ import datetime
 import random
 import json
 
-# 1. 페이지 설정 및 세련된 모던 CSS 스타일 적용
+# 1. 페이지 설정 및 폰트 충돌 해결 CSS 적용
 st.set_page_config(page_title="STUDY DASHBOARD", layout="wide", page_icon="✨")
 
 st.markdown("""
     <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     
-    * {
-        font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif !important;
+    /* Pretendard 폰트 적용 (아이콘 요소 제외) */
+    html, body, [class*="css"], div, p, span, h1, h2, h3, h4, button, input {
+        font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+    
+    /* Streamlit 머티리얼 아이콘 폰트 보존 (arrow_drop_down 깨짐 방지) */
+    .st-emotion-cache-1e5ec1a, [data-testid="stExpanderToggleIcon"] i, .material-symbols-outlined {
+        font-family: 'Material Symbols Outlined', 'Material Icons' !important;
     }
     
     .stApp {
@@ -25,7 +31,7 @@ st.markdown("""
         padding-top: 1rem;
     }
     
-    /* 대시보드 헤더 커스텀 */
+    /* 대시보드 헤더 */
     .hero-header {
         background: linear-gradient(135deg, #6C5CE7 0%, #a29bfe 100%);
         color: white;
@@ -48,7 +54,7 @@ st.markdown("""
         margin-top: 6px;
     }
     
-    /* 응원 박스 커스텀 */
+    /* 응원 박스 */
     .cheer-card {
         background: #FFFFFF;
         border: 1px solid #E9ECEF;
@@ -61,7 +67,7 @@ st.markdown("""
         margin-bottom: 24px;
     }
     
-    /* 타임테이블 블록 스타일링 */
+    /* 타임테이블 블록 */
     .blocked-summary {
         background-color: #F1F3F5;
         border: 1px solid #E9ECEF;
@@ -83,7 +89,7 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
-    /* 버튼 커스텀 */
+    /* 버튼 */
     .stButton>button {
         border-radius: 10px !important;
         border: 1px solid #CED4DA !important;
@@ -194,7 +200,7 @@ for i, tab in enumerate(day_tabs):
         st.slider("✏️ 학원 시간", 0, 24, tuple(sch_data["academy"]), key=f"academy_{i}", on_change=update_schedule_callback, args=(i, "academy"))
         st.slider("🍽️ 식사/휴식", 0, 24, tuple(sch_data["dinner"]), key=f"dinner_{i}", on_change=update_schedule_callback, args=(i, "dinner"))
 
-# 메인 상단 헤더
+# 메인 헤더
 st.markdown("""
     <div class="hero-header">
         <div class="hero-title">✨ Study Planner Dashboard</div>
@@ -225,7 +231,7 @@ with col_info:
 
 st.divider()
 
-# 과목목록 및 체크리스트 (출판사/교재 입력 지원)
+# 과목목록 및 체크리스트
 st.subheader("✅ 과목별 시험범위 및 교재 등록")
 
 with st.expander("➕ 새 과목 / 출판사 / 시험범위 추가하기"):
