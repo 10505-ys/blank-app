@@ -2,7 +2,6 @@ import streamlit as st
 import datetime
 import random
 import json
-import streamlit.components.v1 as components
 
 # 1. 페이지 기본 설정 및 브라운 테마 CSS
 st.set_page_config(page_title="스마트 달력 & 맞춤 시간표 플래너", layout="wide", page_icon="📅")
@@ -67,7 +66,6 @@ CHEERING_MESSAGES = [
     "🎯 시험 당일, 아는 문제는 확실하게! 찍는 문제도 정답으로 이어지는 행운이 함께하길!"
 ]
 
-# 2. 로컬 저장소(localStorage) 자동 저장/불러오기 컴포넌트
 DEFAULT_SCHEDULE = {
     str(i): {
         "sleep": [2, 8] if i < 5 else [3, 10],
@@ -83,8 +81,26 @@ DEFAULT_TASKS = [
     {"subject": "영어", "unit": "1과 본문 암기", "done": False}
 ]
 
-# Query Parameter를 활용한 새로고침 데이터 보존
+# 2. URL Query Parameter를 활용한 새로고침 데이터 및 시험 기간 유지
 params = st.query_params
+today = datetime.date.today()
+
+# 시험 시작일 / 종료일 저장 및 복원
+if "start_date" in params:
+    try:
+        init_start = datetime.datetime.strptime(params["start_date"], "%Y-%m-%d").date()
+    except:
+        init_start = today + datetime.timedelta(days=7)
+else:
+    init_start = today + datetime.timedelta(days=7)
+
+if "end_date" in params:
+    try:
+        init_end = datetime.datetime.strptime(params["end_date"], "%Y-%m-%d").date()
+    except:
+        init_end = init_start + datetime.timedelta(days=3)
+else:
+    init_end = init_start + datetime.timedelta(days=3)
 
 if "tasks" not in st.session_state:
     if "saved_tasks" in params:
@@ -106,14 +122,15 @@ if "weekly_schedule" not in st.session_state:
         st.session_state.weekly_schedule = {i: DEFAULT_SCHEDULE[str(i)] for i in range(7)}
 
 if "selected_date" not in st.session_state:
-    st.session_state.selected_date = datetime.date.today()
+    st.session_state.selected_date = today
 
-# 데이터 변경 시 URL Parameter에 자동 동기화하여 유지
+# 데이터 변경 시 저장 동기화 함수
 def sync_storage():
     st.query_params["saved_tasks"] = json.dumps(st.session_state.tasks, ensure_ascii=False)
     st.query_params["saved_schedule"] = json.dumps(st.session_state.weekly_schedule)
+    st.query_params["start_date"] = st.session_state.start_date_picker.strftime("%Y-%m-%d")
+    st.query_params["end_date"] = st.session_state.end_date_picker.strftime("%Y-%m-%d")
 
-# 실시간 슬라이더 변경 감지 콜백
 def update_schedule_callback(day_idx, key_type):
     val = st.session_state[f"{key_type}_{day_idx}"]
     st.session_state.weekly_schedule[day_idx][key_type] = list(val)
@@ -123,12 +140,9 @@ days_map = ["월요일", "화요일", "수요일", "목요일", "금요일", "�
 
 # 3. 사이드바 설정
 st.sidebar.header("⚙️ 1. 시험 기간 설정")
-today = datetime.date.today()
-default_start = today + datetime.timedelta(days=7)
-default_end = default_start + datetime.timedelta(days=3)
 
-start_date = st.sidebar.date_input("시험 시작일", default_start)
-end_date = st.sidebar.date_input("시험 종료일", default_end)
+start_date = st.sidebar.date_input("시험 시작일", init_start, key="start_date_picker", on_change=sync_storage)
+end_date = st.sidebar.date_input("시험 종료일", init_end, key="end_date_picker", on_change=sync_storage)
 
 st.sidebar.divider()
 st.sidebar.header("🏫 2. 요일별 일과 & 수면 시간 설정")
@@ -323,7 +337,6 @@ uncompleted_tasks = [t for t in st.session_state.tasks if not t["done"]]
 
 st.info(f"💡 **{days_map[day_weekday]}** 수면/학교/학원 시간을 제외하고 **실제 자습할 수 있는 시간은 총 {len(available_hours)}시간**입니다.")
 
-# 공부시간 배정
 assigned_schedule = {}
 if uncompleted_tasks and available_hours:
     subj_index = 0
@@ -339,7 +352,6 @@ if uncompleted_tasks and available_hours:
             subj_index += 1
             current_hour_count = 0
 
-# 시간대 묶기 처리
 schedule_blocks = []
 start_h = 0
 
@@ -365,7 +377,6 @@ while start_h < 24:
         schedule_blocks.append({"start": start_h, "end": end_h, "type": "free", "desc": "☕ 자율 학습 및 개인 정비"})
         start_h = end_h
 
-# 시간표 출력
 for block in schedule_blocks:
     time_str = f"{block['start']:02d}:00 ~ {block['end']:02d}:00"
     
